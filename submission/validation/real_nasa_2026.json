@@ -1,0 +1,54 @@
+{
+  "status": "NORMAL",
+  "environmental_attention_score": 0,
+  "confidence": "HIGH",
+  "model": {
+    "additionalProp1": {}
+  },
+  "statistical_baseline_score": 0,
+  "primary_signal": "string",
+  "signals": {
+    "additionalProp1": {}
+  },
+  "evidence": [
+    "string"
+  ],
+  "data_quality": {
+    "additionalProp1": {}
+  },
+  "limitations": [
+    "string"
+  ],
+  "provenance": {
+    "source": "string",
+    "location": {
+      "additionalProp1": 0,
+      "additionalProp2": 0,
+      "additionalProp3": 0
+    },
+    "crop": "string",
+    "analysis_period": {
+      "additionalProp1": "string",
+      "additionalProp2": "string",
+      "additionalProp3": "string"
+    },
+    "historical_period": {
+      "additionalProp1": {}
+    },
+    "mode": "live",
+    "cache_status": "string",
+    "retrieved_at": "string",
+    "requested_analysis_date": "2026-10-04",
+    "actual_analysis_end_date": "2026-10-04",
+    "latest_data_date": "2026-10-04",
+    "data_age_days": 0,
+    "freshness_status": "CURRENT_DATA_AVAILABLE",
+    "max_data_age_days": 0
+  },
+  "methodology": {
+    "additionalProp1": {}
+  },
+  "environmental_features": {
+    "additionalProp1": {}
+  }
+}
