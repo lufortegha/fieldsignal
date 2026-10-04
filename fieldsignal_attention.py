@@ -20,7 +20,7 @@ except ImportError as exc:  # keep module import errors readable for new users
 
 
 MODEL_FEATURES = ["rainfall_z_score", "mean_temperature_z_score", "maximum_temperature_z_score"]
-MIN_BASELINE_YEARS = 3
+MIN_BASELINE_YEARS = 5
 RANDOM_STATE = 42
 LIMITATIONS = [
     "Environmental anomalies do not establish the cause of crop symptoms.",
