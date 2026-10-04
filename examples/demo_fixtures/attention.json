@@ -1,0 +1,298 @@
+{
+  "status": "ATTENTION",
+  "environmental_attention_score": 5,
+  "confidence": "MODERATE",
+  "model": {
+    "type": "isolation_forest",
+    "anomaly_score": -0.5585620519173017,
+    "score_definition": "raw sklearn score_samples; lower values are more anomalous",
+    "random_state": 42,
+    "training_sample_size": 6
+  },
+  "statistical_baseline_score": 5.159365,
+  "primary_signal": "DRY_WARM_ANOMALY",
+  "signals": {
+    "rainfall_z_score": {
+      "z_score": -6.21059,
+      "anomaly": -90.0,
+      "unit": "mm"
+    },
+    "mean_temperature_z_score": {
+      "z_score": 4.543441,
+      "anomaly": 8.5,
+      "unit": "\u00b0C"
+    },
+    "maximum_temperature_z_score": {
+      "z_score": 4.543441,
+      "anomaly": 8.5,
+      "unit": "\u00b0C"
+    }
+  },
+  "evidence": [
+    "rainfall 90.0% below the seasonal baseline",
+    "mean temperature 8.5\u00b0C above seasonal baseline",
+    "maximum temperature 8.5\u00b0C above seasonal baseline"
+  ],
+  "data_quality": {
+    "missing_value_fraction_max": 0.0,
+    "baseline_sample_size": 6,
+    "critical_failure_reasons": []
+  },
+  "limitations": [
+    "Environmental anomalies do not establish the cause of crop symptoms.",
+    "This assessment is not a prediction of crop damage or yield loss."
+  ],
+  "provenance": {
+    "source": "Synthetic offline demo fixture",
+    "location": {
+      "latitude": null,
+      "longitude": null
+    },
+    "crop": "not specified in offline demo",
+    "analysis_period": {
+      "start": "2026-06-01",
+      "end": "2026-06-07"
+    },
+    "historical_period": {
+      "years_requested": [
+        2020,
+        2021,
+        2022,
+        2023,
+        2024,
+        2025
+      ],
+      "calendar_window": {
+        "start_month_day": "06-01",
+        "end_month_day": "06-07"
+      },
+      "comparison": "same month/day window per historical year; incomplete year-windows omitted per variable"
+    },
+    "mode": "fixture",
+    "cache_status": "local_fixture",
+    "retrieved_at": null
+  },
+  "methodology": {
+    "seasonal_comparison": "same month/day window per historical year; incomplete year-windows omitted per variable",
+    "feature_names": [
+      "rainfall_z_score",
+      "mean_temperature_z_score",
+      "maximum_temperature_z_score"
+    ],
+    "model": "IsolationForest trained on complete historical equivalent-season standardized vectors; random_state=42",
+    "statistical_baseline": "root mean square of Task 2 rainfall, mean-temperature, and maximum-temperature z-scores",
+    "attention_score_mapping": "70% capped statistical magnitude and 30% empirical IsolationForest anomaly rank; five equal-width bands map to scores 1\u20135",
+    "state_policy": "INSUFFICIENT_EVIDENCE overrides; otherwise score >= 3 is ATTENTION and scores 1\u20132 are NORMAL"
+  },
+  "environmental_features": {
+    "source": "Synthetic offline demo fixture",
+    "coordinates": null,
+    "target_window": {
+      "start": "2026-06-01",
+      "end": "2026-06-07"
+    },
+    "historical_years": [
+      2020,
+      2021,
+      2022,
+      2023,
+      2024,
+      2025
+    ],
+    "comparison": "same month/day window per historical year; incomplete year-windows omitted per variable",
+    "features": {
+      "accumulated_rainfall": {
+        "value": 10.0,
+        "unit": "mm",
+        "baseline_mean": null,
+        "baseline_std_sample": null,
+        "baseline_sample_size": 6,
+        "statistically_valid": true,
+        "reason": null
+      },
+      "rainfall_anomaly_mm": {
+        "value": -90.0,
+        "unit": "mm",
+        "baseline_mean": 100.0,
+        "baseline_std_sample": 14.491377,
+        "baseline_sample_size": 6,
+        "statistically_valid": true,
+        "reason": null
+      },
+      "rainfall_anomaly_percent": {
+        "value": -90.0,
+        "unit": "%",
+        "baseline_mean": 100.0,
+        "baseline_std_sample": 14.491377,
+        "baseline_sample_size": 6,
+        "statistically_valid": true,
+        "reason": null
+      },
+      "rainfall_z_score": {
+        "value": -6.21059,
+        "unit": "z-score",
+        "baseline_mean": 100.0,
+        "baseline_std_sample": 14.491377,
+        "baseline_sample_size": 6,
+        "statistically_valid": true,
+        "reason": null
+      },
+      "mean_temperature_anomaly_c": {
+        "value": 8.5,
+        "unit": "\u00b0C",
+        "baseline_mean": 19.5,
+        "baseline_std_sample": 1.870829,
+        "baseline_sample_size": 6,
+        "statistically_valid": true,
+        "reason": null
+      },
+      "mean_temperature_z_score": {
+        "value": 4.543441,
+        "unit": "z-score",
+        "baseline_mean": 19.5,
+        "baseline_std_sample": 1.870829,
+        "baseline_sample_size": 6,
+        "statistically_valid": true,
+        "reason": null
+      },
+      "maximum_temperature_anomaly_c": {
+        "value": 8.5,
+        "unit": "\u00b0C",
+        "baseline_mean": 24.5,
+        "baseline_std_sample": 1.870829,
+        "baseline_sample_size": 6,
+        "statistically_valid": true,
+        "reason": null
+      },
+      "maximum_temperature_z_score": {
+        "value": 4.543441,
+        "unit": "z-score",
+        "baseline_mean": 24.5,
+        "baseline_std_sample": 1.870829,
+        "baseline_sample_size": 6,
+        "statistically_valid": true,
+        "reason": null
+      },
+      "recent_rainfall_persistence": {
+        "value": 1.0,
+        "unit": "fraction of days at/above threshold",
+        "baseline_mean": null,
+        "baseline_std_sample": null,
+        "baseline_sample_size": 0,
+        "statistically_valid": true,
+        "reason": null
+      }
+    },
+    "model_inputs": {
+      "feature_names": [
+        "rainfall_z_score",
+        "mean_temperature_z_score",
+        "maximum_temperature_z_score"
+      ],
+      "target_vector": [
+        -6.21059,
+        4.543441,
+        4.543441
+      ],
+      "historical_vectors": [
+        {
+          "year": 2020,
+          "values": [
+            -1.380131,
+            -1.336306,
+            -1.336306
+          ]
+        },
+        {
+          "year": 2021,
+          "values": [
+            -0.345033,
+            -0.801784,
+            -0.801784
+          ]
+        },
+        {
+          "year": 2022,
+          "values": [
+            0.345033,
+            -0.267261,
+            -0.267261
+          ]
+        },
+        {
+          "year": 2023,
+          "values": [
+            1.380131,
+            0.267261,
+            0.267261
+          ]
+        },
+        {
+          "year": 2024,
+          "values": [
+            -0.690066,
+            0.801784,
+            0.801784
+          ]
+        },
+        {
+          "year": 2025,
+          "values": [
+            0.690066,
+            1.336306,
+            1.336306
+          ]
+        }
+      ]
+    },
+    "data_quality": {
+      "missing_value_fraction": {
+        "rainfall": {
+          "target": 0.0,
+          "historical": 0.0
+        },
+        "mean_temperature": {
+          "target": 0.0,
+          "historical": 0.0
+        },
+        "maximum_temperature": {
+          "target": 0.0,
+          "historical": 0.0
+        }
+      },
+      "complete_baseline_windows_by_feature": {
+        "rainfall": [
+          2020,
+          2021,
+          2022,
+          2023,
+          2024,
+          2025
+        ],
+        "mean_temperature": [
+          2020,
+          2021,
+          2022,
+          2023,
+          2024,
+          2025
+        ],
+        "maximum_temperature": [
+          2020,
+          2021,
+          2022,
+          2023,
+          2024,
+          2025
+        ]
+      },
+      "target_window_complete_by_feature": {
+        "rainfall": true,
+        "mean_temperature": true,
+        "maximum_temperature": true
+      },
+      "recent_days": 7,
+      "wet_day_threshold_mm": 1.0
+    }
+  }
+}

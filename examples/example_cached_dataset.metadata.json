@@ -1,0 +1,20 @@
+{
+  "source": "NASA POWER Daily API (example fixture; illustrative values)",
+  "coordinates": {
+    "latitude": 44.98,
+    "longitude": -93.27
+  },
+  "date_range": {
+    "start": "20240101",
+    "end": "20240102"
+  },
+  "retrieved_at": "example fixture; not retrieved from NASA",
+  "units": {
+    "PRECTOTCORR": "mm/day",
+    "T2M": "\u00b0C",
+    "T2M_MAX": "\u00b0C",
+    "T2M_MIN": "\u00b0C"
+  },
+  "fixture": true,
+  "note": "Illustrative values for offline demonstration; not an actual NASA POWER response."
+}
