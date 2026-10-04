@@ -4,22 +4,26 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+import pandas as pd
 
 from fieldsignal_attention import infer_environmental_attention
 from fieldsignal_features import build_environmental_features
-from fieldsignal_power import fetch_daily
+from fieldsignal_power import PARAMETERS, SENTINELS, fetch_daily
 
 logger = logging.getLogger(__name__)
 VERSION = "0.1.0"
 ROOT = Path(__file__).resolve().parent
 FIXTURE_DIR = ROOT / "examples" / "demo_fixtures"
+DEFAULT_MAX_DATA_AGE_DAYS = 7
+FRESHNESS_STATUSES = ("CURRENT_DATA_AVAILABLE", "LATEST_AVAILABLE_DATA_DELAYED", "UPSTREAM_UNAVAILABLE")
 
 
 class AnalyzeRequest(BaseModel):
@@ -54,6 +58,14 @@ class Provenance(BaseModel):
     mode: Literal["live", "cached", "fixture"]
     cache_status: str | None = None
     retrieved_at: str | None = None
+    requested_analysis_date: date | None = None
+    actual_analysis_end_date: date | None = None
+    latest_data_date: date | None = None
+    data_age_days: int | None = None
+    freshness_status: Literal[
+        "CURRENT_DATA_AVAILABLE", "LATEST_AVAILABLE_DATA_DELAYED", "UPSTREAM_UNAVAILABLE"
+    ] | None = None
+    max_data_age_days: int | None = None
 
 
 class AnalyzeResponse(BaseModel):
@@ -101,6 +113,32 @@ def _analysis_wrapper(
     }
 
 
+def _max_data_age_days() -> int:
+    """Maximum allowed date lag for an explicitly disclosed delayed window."""
+    configured = os.environ.get("FIELDSIGNAL_MAX_DATA_AGE_DAYS", str(DEFAULT_MAX_DATA_AGE_DAYS))
+    try:
+        value = int(configured)
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail="FIELDSIGNAL_MAX_DATA_AGE_DAYS must be a non-negative integer") from exc
+    if value < 0:
+        raise HTTPException(status_code=500, detail="FIELDSIGNAL_MAX_DATA_AGE_DAYS must be a non-negative integer")
+    return value
+
+
+def _unavailable(message: str, requested_date: date, max_age: int, *, status_code: int = 502,
+                  latest_date: date | None = None, age: int | None = None,
+                  freshness_status: str = "UPSTREAM_UNAVAILABLE") -> HTTPException:
+    return HTTPException(status_code=status_code, detail={
+        "code": "UPSTREAM_DATA_UNAVAILABLE" if freshness_status == "UPSTREAM_UNAVAILABLE" else "FRESHNESS_LIMIT_EXCEEDED",
+        "message": message,
+        "freshness_status": freshness_status,
+        "requested_analysis_date": requested_date.isoformat(),
+        "latest_data_date": latest_date.isoformat() if latest_date else None,
+        "data_age_days": age,
+        "max_data_age_days": max_age,
+    })
+
+
 @app.post("/analyze", response_model=AnalyzeResponse)
 def analyze(request: AnalyzeRequest) -> dict[str, Any]:
     analysis_end = request.analysis_date
@@ -117,21 +155,65 @@ def analyze(request: AnalyzeRequest) -> dict[str, Any]:
     # POWER accepts a contiguous request. The feature engine later selects only
     # exact equivalent calendar windows from those years.
     earliest_year = min(years)
-    start_day = min(analysis_start.day, 28) if analysis_start.month == 2 else analysis_start.day
-    retrieval_start = date(earliest_year, analysis_start.month, start_day)
+    max_age = _max_data_age_days()
+    retrieval_start = date(earliest_year, analysis_start.month, analysis_start.day) - timedelta(days=max_age)
     try:
         daily = fetch_daily(
             request.latitude, request.longitude, retrieval_start, analysis_end,
             cache_dir=os.environ.get("FIELDSIGNAL_CACHE_DIR", "data/cache"),
+            allow_trailing_missing=True,
         )
     except Exception as exc:
         logger.warning("Environmental retrieval failed (%s)", type(exc).__name__)
-        raise HTTPException(
-            status_code=502,
-            detail={"code": "UPSTREAM_DATA_UNAVAILABLE", "message": "NASA POWER data could not be loaded from the requested source or a valid matching cache."},
+        raise _unavailable(
+            "NASA POWER data could not be loaded from the requested source or a valid matching cache.",
+            analysis_end, max_age,
         ) from exc
 
-    environmental_features = build_environmental_features(daily, analysis_start, analysis_end, years)
+    latest_value = daily.attrs.get("latest_data_date", daily["date"].max())
+    try:
+        latest_date = (datetime.strptime(str(latest_value), "%Y%m%d").date()
+                       if len(str(latest_value)) == 8 and str(latest_value).isdigit()
+                       else pd.Timestamp(latest_value).date())
+    except (TypeError, ValueError):
+        raise _unavailable("NASA POWER response did not identify a valid latest data date.", analysis_end, max_age)
+    age_days = (analysis_end - latest_date).days
+    if age_days < 0:
+        raise _unavailable("NASA POWER returned data dated after the requested analysis date.", analysis_end, max_age)
+    freshness_status = "CURRENT_DATA_AVAILABLE" if age_days == 0 else "LATEST_AVAILABLE_DATA_DELAYED"
+    if age_days > max_age:
+        raise _unavailable(
+            "The latest valid data exceed the configured maximum data age; no stale window was analyzed.",
+            analysis_end, max_age, status_code=503, latest_date=latest_date, age=age_days,
+            freshness_status="LATEST_AVAILABLE_DATA_DELAYED",
+        )
+
+    actual_end = latest_date
+    actual_start = actual_end - timedelta(days=request.window_days - 1)
+    if actual_start.year != actual_end.year:
+        raise _unavailable("No complete within-year analysis window can be recovered.", analysis_end, max_age,
+                           latest_date=latest_date, age=age_days)
+    target_dates = list(pd.date_range(actual_start, actual_end, freq="D"))
+    normalized_dates = pd.to_datetime(daily["date"], errors="coerce").dt.normalize()
+    mask = normalized_dates.isin(target_dates)
+    target_frame = daily.loc[mask]
+    observed_dates = sorted(normalized_dates.loc[mask].tolist())
+    def valid_value(value: Any) -> bool:
+        if value is None or pd.isna(value):
+            return False
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return False
+        return math.isfinite(number) and number not in SENTINELS
+
+    if observed_dates != target_dates or any(
+        not valid_value(value) for column in PARAMETERS for value in target_frame[column]
+    ):
+        raise _unavailable("No complete valid analysis window exists at the latest available date.", analysis_end,
+                           max_age, latest_date=latest_date, age=age_days)
+
+    environmental_features = build_environmental_features(daily, actual_start, actual_end, years)
     result = infer_environmental_attention(environmental_features)
     cache_state = daily.attrs.get("cache", "unknown")
     mode = "cached" if cache_state == "hit" else "live"
@@ -139,18 +221,24 @@ def analyze(request: AnalyzeRequest) -> dict[str, Any]:
         "source": daily.attrs.get("source", "unknown"),
         "location": {"latitude": request.latitude, "longitude": request.longitude},
         "crop": request.crop,
-        "analysis_period": {"start": analysis_start.isoformat(), "end": analysis_end.isoformat()},
+        "analysis_period": {"start": actual_start.isoformat(), "end": actual_end.isoformat()},
         "historical_period": {
             "years_requested": years,
             "calendar_window": {
-                "start_month_day": analysis_start.strftime("%m-%d"),
-                "end_month_day": analysis_end.strftime("%m-%d"),
+                "start_month_day": actual_start.strftime("%m-%d"),
+                "end_month_day": actual_end.strftime("%m-%d"),
             },
             "comparison": "same calendar window in each requested year",
         },
         "mode": mode,
         "cache_status": cache_state,
         "retrieved_at": daily.attrs.get("retrieved_at"),
+        "requested_analysis_date": analysis_end.isoformat(),
+        "actual_analysis_end_date": actual_end.isoformat(),
+        "latest_data_date": latest_date.isoformat(),
+        "data_age_days": age_days,
+        "freshness_status": freshness_status,
+        "max_data_age_days": max_age,
     }
     return _analysis_wrapper(result, environmental_features, provenance)
 

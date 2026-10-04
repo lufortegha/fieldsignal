@@ -33,6 +33,14 @@ class ProcessResponseTests(unittest.TestCase):
         self.assertEqual(frame.attrs["date_range"]["start"], "20240101")
         self.assertEqual(frame.attrs["retrieved_at"], "2026-10-03T00:00:00+00:00")
 
+    def test_geometry_coordinates_are_fallback_when_header_omits_them(self):
+        payload = sample_payload()
+        del payload["header"]["latitude"]
+        del payload["header"]["longitude"]
+        payload["geometry"] = {"type": "Point", "coordinates": [-93.27, 44.98, 250.0]}
+        frame = process_response(payload)
+        self.assertEqual(frame.attrs["coordinates"], {"latitude": 44.98, "longitude": -93.27})
+
     def test_null_value_fails(self):
         payload = sample_payload()
         payload["properties"]["parameter"]["T2M"]["20240101"] = None
@@ -69,6 +77,25 @@ class ProcessResponseTests(unittest.TestCase):
             self.assertEqual(first.attrs["cache"], "miss")
             self.assertEqual(second.attrs["cache"], "hit")
             open_url.assert_called_once()
+
+    def test_trailing_all_parameter_sentinels_can_be_trimmed_only_when_enabled(self):
+        payload = sample_payload()
+        payload["header"]["end"] = "20240103"
+        for name in PARAMETERS:
+            payload["properties"]["parameter"][name]["20240103"] = -999
+        with self.assertRaisesRegex(PowerDataError, "Missing, null, or sentinel"):
+            process_response(payload)
+        frame = process_response(payload, allow_trailing_missing=True)
+        self.assertEqual(len(frame), 2)
+        self.assertEqual(frame.attrs["date_range"]["end"], "20240103")
+        self.assertEqual(frame.attrs["latest_data_date"], "20240102")
+        self.assertEqual(frame.attrs["trailing_missing_dates"], ["20240103"])
+
+    def test_internal_sentinel_is_not_trimmed(self):
+        payload = sample_payload()
+        payload["properties"]["parameter"]["T2M"]["20240101"] = -999
+        with self.assertRaisesRegex(PowerDataError, "Missing, null, or sentinel"):
+            process_response(payload, allow_trailing_missing=True)
 
 
 if __name__ == "__main__":

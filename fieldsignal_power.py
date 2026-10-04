@@ -37,16 +37,25 @@ def _cache_path(cache_dir: str | Path, lat: float, lon: float, start: str, end: 
     return Path(cache_dir) / f"power_{hashlib.sha256(key.encode()).hexdigest()[:16]}.json"
 
 
-def process_response(payload: dict[str, Any]) -> pd.DataFrame:
-    """Validate a raw POWER JSON payload and return tidy daily values."""
+def process_response(payload: dict[str, Any], *, allow_trailing_missing: bool = False) -> pd.DataFrame:
+    """Validate a POWER payload and return tidy daily values.
+
+    The default remains strict. ``allow_trailing_missing`` permits trimming
+    only final dates where every requested parameter is a NASA sentinel, which
+    supports APIs whose latest daily products are not yet published.
+    """
     try:
         header = payload["header"]
         parameters = payload["parameters"]
         raw = payload["properties"]["parameter"]
-        lon, lat = float(header["longitude"]), float(header["latitude"])
+        geometry = payload.get("geometry") or {}
+        geometry_coordinates = geometry.get("coordinates", []) or []
+        longitude = header["longitude"] if "longitude" in header else geometry_coordinates[0]
+        latitude = header["latitude"] if "latitude" in header else geometry_coordinates[1]
+        lon, lat = float(longitude), float(latitude)
         start, end = str(header["start"]), str(header["end"])
         source = header.get("title", SOURCE)
-    except (KeyError, TypeError, ValueError) as exc:
+    except (AttributeError, IndexError, KeyError, TypeError, ValueError) as exc:
         raise PowerDataError("Malformed POWER response: required metadata or values are missing") from exc
 
     dates = sorted(set().union(*(raw.get(name, {}).keys() for name in PARAMETERS)))
@@ -60,8 +69,19 @@ def process_response(payload: dict[str, Any]) -> pd.DataFrame:
         raise PowerDataError("POWER response contains invalid date-range metadata") from exc
     if dates != expected_dates:
         raise PowerDataError("POWER response has missing or out-of-range daily observations")
+
+    process_dates = expected_dates.copy()
+    trailing_missing_dates = []
+    if allow_trailing_missing:
+        while process_dates and all(
+            raw.get(name, {}).get(process_dates[-1]) in SENTINELS for name in PARAMETERS
+        ):
+            trailing_missing_dates.append(process_dates.pop())
+        if not process_dates:
+            raise PowerDataError("POWER response contains no valid daily observations")
+
     rows = []
-    for day in dates:
+    for day in process_dates:
         row: dict[str, Any] = {"date": pd.to_datetime(day, format="%Y%m%d", errors="raise")}
         for name in PARAMETERS:
             val = raw.get(name, {}).get(day)
@@ -85,6 +105,9 @@ def process_response(payload: dict[str, Any]) -> pd.DataFrame:
         "source": source,
         "coordinates": {"latitude": lat, "longitude": lon},
         "date_range": {"start": start, "end": end},
+        "available_date_range": {"start": process_dates[0], "end": process_dates[-1]},
+        "latest_data_date": process_dates[-1],
+        "trailing_missing_dates": list(reversed(trailing_missing_dates)),
         "retrieved_at": payload.get("retrieved_at"),
         "units": {name: parameters.get(name, {}).get("units") for name in PARAMETERS},
     })
@@ -99,6 +122,7 @@ def fetch_daily(
     *,
     cache_dir: str | Path = "data/cache",
     timeout: int = 30,
+    allow_trailing_missing: bool = False,
 ) -> pd.DataFrame:
     """Retrieve NASA POWER daily data, caching successful raw responses."""
     lat, lon = float(latitude), float(longitude)
@@ -114,7 +138,7 @@ def fetch_daily(
     if cache_file.exists():
         payload = json.loads(cache_file.read_text(encoding="utf-8"))
         payload.setdefault("retrieved_at", "cached")
-        result = process_response(payload)
+        result = process_response(payload, allow_trailing_missing=allow_trailing_missing)
         result.attrs["cache"] = "hit"
         return result
 
@@ -128,7 +152,7 @@ def fetch_daily(
     with urllib.request.urlopen(request, timeout=timeout) as response:
         payload = json.loads(response.read().decode("utf-8"))
     payload["retrieved_at"] = datetime.now(timezone.utc).isoformat()
-    result = process_response(payload)
+    result = process_response(payload, allow_trailing_missing=allow_trailing_missing)
     cache_file.parent.mkdir(parents=True, exist_ok=True)
     cache_file.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     result.attrs["cache"] = "miss"
